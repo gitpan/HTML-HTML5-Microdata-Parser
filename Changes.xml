@@ -15,11 +15,36 @@
     <dc:subject rdf:resource="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#project"/>
     <dc:title>Changes</dc:title>
   </rdf:Description>
-  <Version rdf:about="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0.01">
+  <Version rdf:about="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0_01">
     <dc:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2010-01-08</dc:issued>
     <file-release rdf:resource="http://backpan.perl.org/authors/id/T/TO/TOBYINK/HTML-HTML5-Microdata-Parser-0.01.tar.gz"/>
     <revision rdf:datatype="http://www.w3.org/2001/XMLSchema#string">0.01</revision>
     <rdfs:comment xml:lang="en">Original version</rdfs:comment>
+  </Version>
+  <Version rdf:about="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0_02">
+    <dcs:changeset>
+      <rdf:Description>
+        <dcs:item>
+          <dcs:Update>
+            <rdfs:label xml:lang="en">Synchronise &amp;set_callbacks behaviour with RDF::RDFa::Parser.</rdfs:label>
+          </dcs:Update>
+        </dcs:item>
+        <dcs:item>
+          <dcs:Addition>
+            <rdfs:label xml:lang="en">Make non-item-related processing optional (enabled by default).</rdfs:label>
+          </dcs:Addition>
+        </dcs:item>
+        <dcs:item>
+          <rdf:Description>
+            <rdfs:label xml:lang="en">Document &amp;consume_microdata_item.</rdfs:label>
+          </rdf:Description>
+        </dcs:item>
+        <dcs:versus rdf:resource="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0_01"/>
+      </rdf:Description>
+    </dcs:changeset>
+    <dc:issued rdf:datatype="http://www.w3.org/2001/XMLSchema#date">2010-01-29</dc:issued>
+    <file-release rdf:resource="http://backpan.perl.org/authors/id/T/TO/TOBYINK/HTML-HTML5-Microdata-Parser-0.02.tar.gz"/>
+    <revision rdf:datatype="http://www.w3.org/2001/XMLSchema#string">0.02</revision>
   </Version>
   <Project rdf:about="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#project">
     <bug-database rdf:resource="http://rt.cpan.org/Dist/Display.html?Queue=HTML-HTML5-Microdata-Parser"/>
@@ -32,17 +57,19 @@
     <maintainer rdf:resource="http://tobyinkster.co.uk/#i"/>
     <name>HTML-HTML5-Microdata-Parser</name>
     <programming-language>Perl</programming-language>
-    <release rdf:resource="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0.01"/>
+    <release rdf:resource="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0_01"/>
+    <release rdf:resource="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#v_0_02"/>
     <repository>
       <SVNRepository>
         <browse rdf:resource="http://goddamn.co.uk/viewvc/perlmods/HTML-HTML5-Microdata-Parser/"/>
       </SVNRepository>
     </repository>
-    <shortdesc xml:lang="en">Example Project</shortdesc>
+    <shortdesc xml:lang="en">fairly experimental parser for HTML 'microdata'</shortdesc>
     <tester rdf:resource="http://tobyinkster.co.uk/#i"/>
   </Project>
   <foaf:Person rdf:about="http://tobyinkster.co.uk/#i">
     <foaf:homepage rdf:resource="http://tobyinkster.co.uk/"/>
+    <foaf:mbox rdf:resource="mailto:tobyink@cpan.org"/>
     <foaf:name>Toby Inkster</foaf:name>
     <foaf:page rdf:resource="http://search.cpan.org/~tobyink/"/>
   </foaf:Person>

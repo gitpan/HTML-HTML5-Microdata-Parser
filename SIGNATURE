@@ -14,34 +14,35 @@ not run its Makefile.PL or Build.PL.
 -----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA1
 
-SHA1 d9415ab370fdd6e6031d2d38694a58c01aaf8465 Changes
-SHA1 31252e6f163e30845e708b0129cda30829d97063 Changes.ttl
-SHA1 e6d1762804bb9c1292f8f7c45fa9c8b5c2cc8ee6 Changes.xml
-SHA1 d3c6b6fb6149e8c9c515a31c17ddcf48ea6c6f64 MANIFEST
+SHA1 636b5fb30840aa3fc4e1fecbb40e62d306b8390c Changes
+SHA1 58da77a7c417abd1643c2d9702cf5805aa6df170 Changes.ttl
+SHA1 0244de546abe867a65359a9d43aca1e0a318985a Changes.xml
+SHA1 073ca0e8783431c2f1d807367311252b14ac4e16 MANIFEST
 SHA1 28817ddce2c975015b983e0c5bfe5dfb9f44532a MANIFEST.SKIP
-SHA1 aa39931f4759b772f1c76d0d6416eb6d1800984d META.yml
-SHA1 871b72bc0644a4c88300c9bea848ba0dc4965446 Makefile.PL
-SHA1 2c0f62619955461604b024f2736e6f69f5b2e0ba README
+SHA1 a68b9fbaf0e876660f07c19249545a55a761ef0a META.yml
+SHA1 2bbc86521d59064856bb65c95fd7c468fedf5b84 Makefile.PL
+SHA1 fff6d2fa1ac5c16175101db6e77997306f535439 README
 SHA1 e5fb92ac217988bfc7a6af739b0459627020a27e inc/Module/AutoInstall.pm
 SHA1 fd5f3c4f0418efee3b9b16cf8c3902e8374909df inc/Module/Install.pm
 SHA1 5c529e96420d964b192f011b121283a4916f7331 inc/Module/Install/AutoInstall.pm
 SHA1 7cd7c349afdf3f012e475507b1017bdfa796bfbd inc/Module/Install/Base.pm
 SHA1 ba186541bbf6439111f01fc70769cf24d22869bf inc/Module/Install/Can.pm
-SHA1 8025e46368f2ced7b53c7b387c1b03e0e2dc65eb inc/Module/Install/DOAPChangeSets.pm
+SHA1 3369e95c2e5dc40a19931995dffa67929ff4d369 inc/Module/Install/DOAPChangeSets.pm
 SHA1 aaa50eca0d7751db7a4d953fac9bc72c6294e238 inc/Module/Install/Fetch.pm
 SHA1 219da5a95c290312a81477b226f005997d97dcfd inc/Module/Install/Include.pm
 SHA1 3e83972921d54198d1246f7278f08664006cd65d inc/Module/Install/Makefile.pm
 SHA1 12bf1867955480d47d5171a9e9c6a96fabe0b58f inc/Module/Install/Metadata.pm
+SHA1 a615bb050ca0b2d79bfa0224addcb83019a53b09 inc/Module/Install/ReadmeFromPod.pm
 SHA1 f7ee667e878bd2faf22ee9358a7b5a2cc8e91ba4 inc/Module/Install/Win32.pm
 SHA1 8ed29d6cf217e0977469575d788599cbfb53a5ca inc/Module/Install/WriteAll.pm
 SHA1 1e6399a0585817abef500c34fce676fb9b0545f0 inc/Test/Signature.pm
-SHA1 0cf09391ed3d96cea683a78feafa7c22932fba36 lib/HTML/HTML5/Microdata/Parser.pm
+SHA1 9e0562ce3df8b93e0b19dc90e93bcf2c115ee48d lib/HTML/HTML5/Microdata/Parser.pm
 SHA1 bb128dce2db8ad397dbeb957d79d084cc5d2391a t/00sig.t
 SHA1 87baec2e71cab5155c7a96d72a068aa86708074d t/01basic.t
 -----BEGIN PGP SIGNATURE-----
 Version: GnuPG v1.4.10 (GNU/Linux)
 
-iEYEARECAAYFAktHWt0ACgkQzr+BKGoqfTnz7QCgg8UXi7uBUd0/V4gumWnlGGv4
-syoAn3MisStl6WwEZUWHEHga/xbvUWep
-=1xPe
+iEYEARECAAYFAktixTEACgkQzr+BKGoqfTnZBACgiHg5w+Md7UU43689Sqqqwl9e
+4OcAoIZPoGSRwvZrh7nSYaM6GilIP38L
+=4w0/
 -----END PGP SIGNATURE-----

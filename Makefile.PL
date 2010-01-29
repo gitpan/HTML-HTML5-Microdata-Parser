@@ -10,6 +10,7 @@ name                $dist;
 perl_version_from   $fn;
 version_from        $fn;
 abstract_from       $fn;
+readme_from         $fn;
 author              'Toby Inkster <tobyink@cpan.org>';
 license             'perl';
 

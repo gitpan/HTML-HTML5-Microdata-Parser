@@ -20,7 +20,7 @@
 
 #############################################################
 
-my:v_0.01
+my:v_0_01
 
 	a               :Version ;
 	dc:issued       "2010-01-08"^^xsd:date ;
@@ -28,13 +28,27 @@ my:v_0.01
 	:file-release   <http://backpan.perl.org/authors/id/T/TO/TOBYINK/HTML-HTML5-Microdata-Parser-0.01.tar.gz> ;
 	rdfs:comment    "Original version"@en .
 
+my:v_0_02
+
+	a               :Version ;
+	dc:issued       "2010-01-29"^^xsd:date ;
+	:revision       "0.02"^^xsd:string ;
+	:file-release   <http://backpan.perl.org/authors/id/T/TO/TOBYINK/HTML-HTML5-Microdata-Parser-0.02.tar.gz> ;
+	dcs:changeset [
+		dcs:versus my:v_0_01;
+		dcs:item
+			[ rdfs:label "Synchronise &set_callbacks behaviour with RDF::RDFa::Parser."@en ; a dcs:Update ] ,
+			[ rdfs:label "Make non-item-related processing optional (enabled by default)."@en ; a dcs:Addition ] ,
+			[ rdfs:label "Document &consume_microdata_item."@en ]
+		] .
+
 #############################################################
 
 my:project
 
 	a               :Project ;
 	:name           "HTML-HTML5-Microdata-Parser" ;
-	:shortdesc      "Example Project"@en ;
+	:shortdesc      "fairly experimental parser for HTML 'microdata'"@en ;
 	:programming-language  "Perl" ;
 	:homepage       <http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/> ;
 	:download-page  <http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/> ;
@@ -46,7 +60,7 @@ my:project
 	:tester         toby:i ;
 	:created        "2009-12-03"^^xsd:date ;
 	:license        <http://dev.perl.org/licenses/> ;
-	:release        my:v_0.01 .
+	:release        my:v_0_01 , my:v_0_02 .
 
 #############################################################
 
@@ -55,6 +69,7 @@ toby:i
 	a               foaf:Person ;
 	foaf:name       "Toby Inkster" ;
 	foaf:homepage   <http://tobyinkster.co.uk/> ;
-	foaf:page       <http://search.cpan.org/~tobyink/> .
+	foaf:page       <http://search.cpan.org/~tobyink/> ;
+	foaf:mbox       <mailto:tobyink@cpan.org> .
 
 #############################################################

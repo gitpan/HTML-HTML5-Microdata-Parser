@@ -1,5 +1,5 @@
 ---
-abstract: 'Parse HTML5 Microdata with Perl'
+abstract: "fairly experimental parser for HTML 'microdata'"
 author:
   - 'Toby Inkster <tobyink@cpan.org>'
 build_requires:
@@ -33,4 +33,4 @@ resources:
   homepage: http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/
   license: http://dev.perl.org/licenses/
   repository: http://goddamn.co.uk/viewvc/perlmods/HTML-HTML5-Microdata-Parser/
-version: 0.01
+version: 0.02

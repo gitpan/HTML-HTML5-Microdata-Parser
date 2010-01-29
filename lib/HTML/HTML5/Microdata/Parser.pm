@@ -2,11 +2,11 @@ package HTML::HTML5::Microdata::Parser;
 
 =head1 NAME
 
-HTML::HTML5::Microdata::Parser - Parse HTML5 Microdata with Perl
+HTML::HTML5::Microdata::Parser - fairly experimental parser for HTML 'microdata'
 
 =head1 VERSION
 
-0.01
+0.02
 
 =head1 SYNOPSIS
 
@@ -30,7 +30,7 @@ use URI::Escape;
 use URI::URL;
 use XML::LibXML qw(:all);
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =head1 DESCRIPTION
 
@@ -63,7 +63,11 @@ Options [default in brackets]:
   * tdb_service     - thing-described-by.org when possible. [0] 
   * xhtml_base      - Process <base href> element. [1]
   * xhtml_lang      - Process @lang. [1]
-  * xhtml_time      - Process <time> element nicely. [0]
+  * xhtml_meta      - Process <meta>. [1]
+  * xhtml_cite      - Process @cite. [1]
+  * xhtml_rel       - Process @rel. [1]
+  * xhtml_time      - Process <time> element more nicely. [0]
+  * xhtml_title     - Process <title> element. [1]
   * xml_lang        - Process @xml:lang. [1]
 
 $storage is an RDF::Trine::Storage object. If undef, then a new
@@ -243,75 +247,48 @@ sub dom
 	return $this->{DOM};
 }
 
-=item $p->set_callbacks(\&func1, \&func2)
+=item $p->set_callbacks(\%callbacks)
 
-Set callbacks for handling RDF triples extracted from the document. The
-first function is called when a triple is generated taking the form of
-(I<resource>, I<resource>, I<resource>). The second function is called when a
-triple is generated taking the form of (I<resource>, I<resource>, I<literal>).
+Set callback functions for the parser to call on certain events. These are only necessary if
+you want to do something especially unusual.
 
-The parameters passed to the first callback function are:
+  $p->set_callbacks({
+    'pretriple_resource' => sub { ... } ,
+    'pretriple_literal'  => sub { ... } ,
+    'ontriple'           => undef ,
+    });
 
-=over 4
+Either of the two pretriple callbacks can be set to the string 'print' instead of a coderef.
+This enables built-in callbacks for printing Turtle to STDOUT.
 
-=item * A reference to the C<HTML::HTML5::Microdata::Parser> object
-
-=item * A reference to the C<XML::LibXML element> being parsed
-
-=item * Subject URI or bnode
-
-=item * Predicate URI
-
-=item * Object URI or bnode
-
-=back
-
-The parameters passed to the second callback function are:
-
-=over 4
-
-=item * A reference to the C<HTML::HTML5::Microdata::Parser> object
-
-=item * A reference to the C<XML::LibXML element> being parsed
-
-=item * Subject URI or bnode
-
-=item * Predicate URI
-
-=item * Object literal
-
-=item * Datatype URI (possibly undef or '')
-
-=item * Language (possibly undef or '')
-
-=back
-
-In place of either or both functions you can use the string C<'print'> which
-sets the callback to a built-in function which prints the triples to STDOUT
-as Turtle. Either or both can be set to undef, in which case, no callback
-is called when a triple is found.
-
-Beware that for literal callbacks, sometimes both a datatype *and* a language
-will be passed. (This goes beyond the normal RDF data model.)
-
-C<set_callbacks> (if used) must be used I<before> C<consume>.
+For details of the callback functions, see the section CALLBACKS. C<set_callbacks> must
+be used I<before> C<consume>. C<set_callbacks> itself returns a reference to the parser
+object itself.
 
 =cut
 
 sub set_callbacks
-# Set callback functions for handling RDF triples.
 {
 	my $this = shift;
 
-	for (my $n=0 ; $n<2 ; $n++)
+	if ('HASH' eq ref $_[0])
 	{
-		if (lc($_[$n]) eq 'print')
-			{ $this->{'sub'}->[$n] = ($n==0 ? \&_print0 : \&_print1); }
-		elsif ('CODE' eq ref $_[$n])
-			{ $this->{'sub'}->[$n] = $_[$n]; }
-		else
-			{ $this->{'sub'}->[$n] = undef; }
+		$this->{'sub'} = $_[0];
+		$this->{'sub'}->{'pretriple_resource'} = \&_print0
+			if lc $this->{'sub'}->{'pretriple_resource'} eq 'print';
+		$this->{'sub'}->{'pretriple_literal'} = \&_print1
+			if lc $this->{'sub'}->{'pretriple_literal'} eq 'print';
 	}
+	elsif (defined $_[0])
+	{
+		die("What kind of callback hashref was that??\n");
+	}
+	else
+	{
+		$this->{'sub'} = undef;
+	}
+	
+	return $this;
 }
 
 sub _print0
@@ -405,83 +382,129 @@ sub consume
 	my $xpc = XML::LibXML::XPathContext->new;
 	$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
 	
-	my $titles = $xpc->find(
-		'//x:title', $this->{'DOM'}->documentElement);
-		
-	# If the title element is not null, then generate the following triple:
-	foreach my $title ($titles->get_nodelist)
+	if ($this->{'options'}->{'xhtml_title'})
 	{
-		$this->rdf_triple_literal(
-			$title,
-			$this->{'baseuri'},               # subject : the document's current address 
-			'http://purl.org/dc/terms/title', # predicate : http://purl.org/dc/terms/title 
-			$this->stringify($title),         # object : the concatenation of the data of all the child text nodes of the title element, in tree order, 
-			undef,                            # ... as a plain literal
-			$this->get_node_lang($title));    # ... with the language information set from the language of the title element, if it is not unknown. 
+		my $titles = $xpc->find(
+			'//x:title', $this->{'DOM'}->documentElement);
+			
+		# If the title element is not null, then generate the following triple:
+		foreach my $title ($titles->get_nodelist)
+		{
+			$this->rdf_triple_literal(
+				$title,
+				$this->{'baseuri'},               # subject : the document's current address 
+				'http://purl.org/dc/terms/title', # predicate : http://purl.org/dc/terms/title 
+				$this->stringify($title),         # object : the concatenation of the data of all the child text nodes of the title element, in tree order, 
+				undef,                            # ... as a plain literal
+				$this->get_node_lang($title));    # ... with the language information set from the language of the title element, if it is not unknown. 
+		}
 	}
 	
-	# For each a, area, and link element in the Document, run these substeps:
-	my @links = $xpc
-		->find('//x:a[@rel][@href]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-	push @links, $xpc
-		->find('//x:area[@rel][@href]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-	push @links, $xpc
-		->find('//x:link[@rel][@href]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-	# If the element does not have a rel attribute, then skip this element.
-	# If the element does not have an href attribute, then skip this element.
-	
-	foreach my $link (@links)
+	if ($this->{'options'}->{'xhtml_rel'})
 	{
-		# If resolving the element's href attribute relative to the element is not successful, then skip this element.
-		my $href = $this->uri( $link->getAttribute('href') );
-		next unless defined $href;
+		# For each a, area, and link element in the Document, run these substeps:
+		my @links = $xpc
+			->find('//x:a[@rel][@href]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+		push @links, $xpc
+			->find('//x:area[@rel][@href]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+		push @links, $xpc
+			->find('//x:link[@rel][@href]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+		# If the element does not have a rel attribute, then skip this element.
+		# If the element does not have an href attribute, then skip this element.
 		
-		# Otherwise, split the value of the element's rel attribute on spaces, obtaining list of tokens.
-		# <del>Convert each token in list of tokens to ASCII lowercase.</del>
-		# <ins>Convert each token in list of tokens that does not contain a U+003A COLON characters (:) to ASCII lowercase.</ins>
-		# <!-- http://www.w3.org/Bugs/Public/show_bug.cgi?id=8450 -->
-		my $rels = $link->getAttribute('rel');
-		$rels =~ s/\s+/ /g;
-		$rels =~ s/(^\s+|\s+$)//g;
-		my @raw_rels = split / /, $rels;
-		my @rels;
-		foreach my $r (@raw_rels)
+		foreach my $link (@links)
 		{
-			push @rels, ( ($r=~/:/) ? $r : lc $r );
+			# If resolving the element's href attribute relative to the element is not successful, then skip this element.
+			my $href = $this->uri( $link->getAttribute('href') );
+			next unless defined $href;
+			
+			# Otherwise, split the value of the element's rel attribute on spaces, obtaining list of tokens.
+			# <del>Convert each token in list of tokens to ASCII lowercase.</del>
+			# <ins>Convert each token in list of tokens that does not contain a U+003A COLON characters (:) to ASCII lowercase.</ins>
+			# <!-- http://www.w3.org/Bugs/Public/show_bug.cgi?id=8450 -->
+			my $rels = $link->getAttribute('rel');
+			$rels =~ s/\s+/ /g;
+			$rels =~ s/(^\s+|\s+$)//g;
+			my @raw_rels = split / /, $rels;
+			my @rels;
+			foreach my $r (@raw_rels)
+			{
+				push @rels, ( ($r=~/:/) ? $r : lc $r );
+			}
+			
+			# If list of tokens contains more than one instance of the token up, then remove all such tokens.
+			my $count_up = grep /^up$/, @rels;
+			if ($count_up > 1)
+			{
+				@rels = grep !/^up$/, @rels;
+			}
+			
+			# Coalesce duplicate tokens in list of tokens.
+			@rels = keys %{{map { $_, 1 } @rels}};
+			
+			# If list of tokens contains both the tokens alternate and stylesheet, then remove them both and replace them with the single (uppercase) token ALTERNATE-STYLESHEET.
+			if (($this->{'options'}->{'alt_stylesheet'})
+			and (grep /^alternate$/, @rels)
+			and (grep /^stylesheet$/, @rels))
+			{
+				@rels = grep !/^(alternate|stylesheet)$/, @rels;
+				push @rels, 'ALTERNATE-STYLESHEET';
+			}
+			
+			foreach my $token (@rels)
+			{
+				# For each token token in list of tokens that contains no U+003A COLON characters (:), generate the following triple:
+				if ($token !~ /:/)
+				{
+					$this->rdf_triple(
+						$link,
+						$this->{'baseuri'},  # subject : the document's current address 
+						'http://www.w3.org/1999/xhtml/vocab#'.uri_escape($token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
+						$href);              # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
+				}
+				else
+				{
+					# For each token token in list of tokens that is an absolute URL, generate the following triple:
+					my $predicate = $this->uri($token, {'require-absolute'=>1});
+					if (defined $predicate)
+					{
+						$this->rdf_triple(
+							$link,
+							$this->{'baseuri'}, # subject : the document's current address 
+							$token,             # predicate : token
+							$href);             # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
+					}
+					
+					# TOBY-NOTE: even URIs have been lowercased. This follows the spec but seems odd.
+				}
+			}
 		}
-		
-		# If list of tokens contains more than one instance of the token up, then remove all such tokens.
-		my $count_up = grep /^up$/, @rels;
-		if ($count_up > 1)
+	}
+	
+	if ($this->{'options'}->{'xhtml_meta'})
+	{
+		# For each meta element in the Document that has a name attribute and a content attribute,
+		my @metas = $xpc
+			->find('//x:meta[@name][@content]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+
+		foreach my $meta (@metas)
 		{
-			@rels = grep !/^up$/, @rels;
-		}
-		
-		# Coalesce duplicate tokens in list of tokens.
-		@rels = keys %{{map { $_, 1 } @rels}};
-		
-		# If list of tokens contains both the tokens alternate and stylesheet, then remove them both and replace them with the single (uppercase) token ALTERNATE-STYLESHEET.
-		if (($this->{'options'}->{'alt_stylesheet'})
-		and (grep /^alternate$/, @rels)
-		and (grep /^stylesheet$/, @rels))
-		{
-			@rels = grep !/^(alternate|stylesheet)$/, @rels;
-			push @rels, 'ALTERNATE-STYLESHEET';
-		}
-		
-		foreach my $token (@rels)
-		{
-			# For each token token in list of tokens that contains no U+003A COLON characters (:), generate the following triple:
+			my $token = $meta->getAttribute('name');
+			
+			# if the value of the name attribute contains no U+003A COLON characters (:), generate the following triple:
 			if ($token !~ /:/)
 			{
-				$this->rdf_triple(
-					$link,
-					$this->{'baseuri'},  # subject : the document's current address 
-					'http://www.w3.org/1999/xhtml/vocab#'.uri_escape($token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
-					$href);              # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
+				$this->rdf_triple_literal(
+					$meta,
+					$this->{'baseuri'},              # subject : the document's current address 
+					'http://www.w3.org/1999/xhtml/vocab#'.uri_escape(lc $token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
+					$meta->getAttribute('content'),  # object : the value of the element's content attribute, 
+					undef,                           # as a plain literal, 
+					$this->get_node_lang($meta));    # with the language information set from the language of the element, if it is not unknown
 			}
 			else
 			{
@@ -489,76 +512,42 @@ sub consume
 				my $predicate = $this->uri($token, {'require-absolute'=>1});
 				if (defined $predicate)
 				{
-					$this->rdf_triple(
-						$link,
-						$this->{'baseuri'}, # subject : the document's current address 
-						$token,             # predicate : token
-						$href);             # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
+					$this->rdf_triple_literal(
+						$meta,
+						$this->{'baseuri'},             # subject : the document's current address 
+						$token,                         # predicate : token
+						$meta->getAttribute('content'), # object : the value of the element's content attribute, 
+						undef,                          # as a plain literal, 
+						$this->get_node_lang($meta));   # with the language information set from the language of the element, if it is not unknown
 				}
-				
-				# TOBY-NOTE: even URIs have been lowercased. This follows the spec but seems odd.
-			}
+			}		
 		}
 	}
 	
-	# For each meta element in the Document that has a name attribute and a content attribute,
-	my @metas = $xpc
-		->find('//x:meta[@name][@content]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-
-	foreach my $meta (@metas)
+	if ($this->{'options'}->{'xhtml_cite'})
 	{
-		my $token = $meta->getAttribute('name');
-		
-		# if the value of the name attribute contains no U+003A COLON characters (:), generate the following triple:
-		if ($token !~ /:/)
+		# For each blockquote and q element in the Document that has a cite attribute 
+		my @quotes = $xpc
+			->find('//x:blockquote[@cite]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+		push @quotes, $xpc
+			->find('//x:q[@cite]', $this->{'DOM'}->documentElement)
+			->get_nodelist;
+			
+		foreach my $quote (@quotes)
 		{
-			$this->rdf_triple_literal(
-				$meta,
-				$this->{'baseuri'},              # subject : the document's current address 
-				'http://www.w3.org/1999/xhtml/vocab#'.uri_escape(lc $token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
-				$meta->getAttribute('content'),  # object : the value of the element's content attribute, 
-				undef,                           # as a plain literal, 
-				$this->get_node_lang($meta));    # with the language information set from the language of the element, if it is not unknown
-		}
-		else
-		{
-			# For each token token in list of tokens that is an absolute URL, generate the following triple:
-			my $predicate = $this->uri($token, {'require-absolute'=>1});
-			if (defined $predicate)
+			# that resolves successfully relative to the element, 
+			my $cite = $this->uri($quote->getAttribute('cite'));
+			
+			if (defined $cite)
 			{
-				$this->rdf_triple_literal(
-					$meta,
-					$this->{'baseuri'},             # subject : the document's current address 
-					$token,                         # predicate : token
-					$meta->getAttribute('content'), # object : the value of the element's content attribute, 
-					undef,                          # as a plain literal, 
-					$this->get_node_lang($meta));   # with the language information set from the language of the element, if it is not unknown
+				# generate the following triple:
+				$this->rdf_triple(
+					$quote,
+					$this->{'baseuri'},                # subject : the document's current address 
+					'http://purl.org/dc/terms/source', # predicate : http://purl.org/dc/terms/source 
+					$cite);                            # object : the absolute URL that results from resolving the value of the element's cite attribute relative to the element 
 			}
-		}		
-	}
-	
-	# For each blockquote and q element in the Document that has a cite attribute 
-	my @quotes = $xpc
-		->find('//x:blockquote[@cite]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-	push @quotes, $xpc
-		->find('//x:q[@cite]', $this->{'DOM'}->documentElement)
-		->get_nodelist;
-		
-	foreach my $quote (@quotes)
-	{
-		# that resolves successfully relative to the element, 
-		my $cite = $this->uri($quote->getAttribute('cite'));
-		
-		if (defined $cite)
-		{
-			# generate the following triple:
-			$this->rdf_triple(
-				$quote,
-				$this->{'baseuri'},                # subject : the document's current address 
-				'http://purl.org/dc/terms/source', # predicate : http://purl.org/dc/terms/source 
-				$cite);                            # object : the absolute URL that results from resolving the value of the element's cite attribute relative to the element 
 		}
 	}
 	
@@ -584,6 +573,19 @@ sub consume
 	
 	return $this;
 }
+
+=item $p->consume_microdata_item($element)
+
+You almost certainly do not want to use this method.
+
+It will consume a single Microdata item, assuming that $element is an
+element that does or should have the @itemscope attribute set. Returns
+the URI or blank node identifier for the item.
+
+This method is exposed mostly for the benefit of
+L<HTML::HTML5::Microdata::ToRDFa>.
+
+=cut
 
 sub consume_microdata_item
 {
@@ -1053,10 +1055,8 @@ sub rdf_triple
 	my $this = shift;
 
 	my $suppress_triple = 0;
-	if ($this->{'sub'}->[0])
-	{
-		$suppress_triple = $this->{'sub'}->[0]($this, @_);
-	}
+	$suppress_triple = $this->{'sub'}->{'pretriple_resource'}($this, @_)
+		if defined $this->{'sub'}->{'pretriple_resource'};
 	return if $suppress_triple;
 	
 	my $element   = shift;  # A reference to the XML::LibXML element being parsed
@@ -1085,10 +1085,8 @@ sub rdf_triple_literal
 	my $this = shift;
 
 	my $suppress_triple = 0;
-	if ($this->{'sub'}->[1])
-	{
-		$suppress_triple = $this->{'sub'}->[1]($this, @_);
-	}
+	$suppress_triple = $this->{'sub'}->{'pretriple_literal'}($this, @_)
+		if defined $this->{'sub'}->{'pretriple_literal'};
 	return if $suppress_triple;
 
 	my $element   = shift;  # A reference to the XML::LibXML element being parsed
@@ -1160,8 +1158,13 @@ sub rdf_triple_common
 		$ts = RDF::Trine::Node::Resource->new($subject);
 	}
 
-	# If no graph name, just add triples
 	my $statement = RDF::Trine::Statement->new($ts, $tp, $to);
+
+	my $suppress_triple = 0;
+	$suppress_triple = $this->{'sub'}->{'ontriple'}($this, $element, $statement)
+		if ($this->{'sub'}->{'ontriple'});
+	return if $suppress_triple;
+
 	$this->{RESULTS}->add_statement($statement);
 }
 
@@ -1407,6 +1410,86 @@ sub parse_axwfue
 __END__
 
 =back
+
+=head1 CALLBACKS
+
+Several callback functions are provided. These may be set using the C<set_callbacks> function,
+which taskes a hashref of keys pointing to coderefs. The keys are named for the event to fire the
+callback on.
+
+=head2 pretriple_resource
+
+This is called when a triple has been found, but before preparing the triple for
+adding to the model. It is only called for triples with a non-literal object value.
+
+The parameters passed to the callback function are:
+
+=over 4
+
+=item * A reference to the C<HTML::HTML5::Microdata::Parser> object
+
+=item * A reference to the C<XML::LibXML::Element> being parsed
+
+=item * Subject URI or bnode (string)
+
+=item * Predicate URI (string)
+
+=item * Object URI or bnode (string)
+
+=back
+
+The callback should return 1 to tell the parser to skip this triple (not add it to
+the graph); return 0 otherwise.
+
+=head2 pretriple_literal
+
+This is the equivalent of pretriple_resource, but is only called for triples with a
+literal object value.
+
+The parameters passed to the callback function are:
+
+=over 4
+
+=item * A reference to the C<HTML::HTML5::Microdata::Parser> object
+
+=item * A reference to the C<XML::LibXML::Element> being parsed
+
+=item * Subject URI or bnode (string)
+
+=item * Predicate URI (string)
+
+=item * Object literal (string)
+
+=item * Datatype URI (string or undef)
+
+=item * Language (string or undef)
+
+=back
+
+Beware: sometimes both a datatype I<and> a language will be passed. 
+This goes beyond the normal RDF data model.)
+
+The callback should return 1 to tell the parser to skip this triple (not add it to
+the graph); return 0 otherwise.
+
+=head2 ontriple
+
+This is called once a triple is ready to be added to the graph. (After the pretriple
+callbacks.) The parameters passed to the callback function are:
+
+=over 4
+
+=item * A reference to the C<HTML::HTML5::Microdata::Parser> object
+
+=item * A reference to the C<XML::LibXML::Element> being parsed
+
+=item * An RDF::Trine::Statement object.
+
+=back
+
+The callback should return 1 to tell the parser to skip this triple (not add it to
+the graph); return 0 otherwise. The callback may modify the RDF::Trine::Statement
+object.
 
 =head1 AUTO CONFIG
 
