@@ -6,22 +6,20 @@ HTML::HTML5::Microdata::Parser - fairly experimental parser for HTML 'microdata'
 
 =head1 VERSION
 
-0.02
+0.030
 
 =head1 SYNOPSIS
 
   use HTML::HTML5::Microdata::Parser;
   
   my $parser = HTML::HTML5::Microdata::Parser->new($html, $baseURI);
-  $parser->consume;
-  my $graph  = $parser->graph
+  my $graph  = $parser->graph;
 
 =cut
 
-use 5.008001;
+use 5.008;
 use strict;
 
-use Data::Dumper;
 use Encode qw(encode_utf8);
 use HTML::HTML5::Parser;
 use HTML::HTML5::Sanity;
@@ -30,7 +28,7 @@ use URI::Escape;
 use URI::URL;
 use XML::LibXML qw(:all);
 
-our $VERSION = '0.02';
+our $VERSION = '0.030';
 
 =head1 DESCRIPTION
 
@@ -106,6 +104,7 @@ sub new
 			'RESULTS' => RDF::Trine::Model->new($store),
 			'bnodes'  => 0,
 			'sub'     => [],
+			'consumed'=> 0,
 			'options' => {
 				'alt_stylesheet'  => 1,
 				'auto_config'     => 0,
@@ -113,8 +112,12 @@ sub new
 				'prefix_empty'    => undef,
 				'tdb_service'     => 0,
 				'xhtml_base'      => 1,
+				'xhtml_cite'      => 1,
 				'xhtml_lang'      => 1,
+				'xhtml_meta'      => 1,
+				'xhtml_rel'       => 1,
 				'xhtml_time'      => 0,
+				'xhtml_title'     => 1,
 				'xml_lang'        => 1,
 				},
 			'default_language' => undef,
@@ -373,11 +376,16 @@ The document is parsed for Microdata. Nothing of interest is returned by this
 function, but the triples extracted from the document are passed to the
 callbacks as each one is found.
 
+The C<graph> method automatically calls C<consume>, so normally you don't need
+to call it manually. If you're using callback functions, it may be useful though.
+
 =cut
 
 sub consume
 {
 	my $this = shift;
+	
+	return $this if $this->{'consumed'};
 	
 	my $xpc = XML::LibXML::XPathContext->new;
 	$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
@@ -570,6 +578,8 @@ sub consume
 			'http://www.w3.org/1999/xhtml/microdata#item',  # predicate : http://www.w3.org/1999/xhtml/microdata#item  
 			$item_address);                                 # object : [item address]
 	}
+	
+	$this->{'consumed'}++;
 	
 	return $this;
 }
@@ -1343,20 +1353,19 @@ sub valid_lang
 This method will return an RDF::Trine::Model object with all
 statements of the full graph.
 
-It makes sense to call C<consume> before calling C<graph>. Otherwise
-you'll just get an empty graph.
-
 =cut
 
 sub graph
 {
 	my $this = shift;
+	$this->consume;
 	return $this->{RESULTS};
 }
 
 sub graphs
 {
 	my $this = shift;
+	$this->consume;
 	return { $this->{'baseuri'} => $this->{RESULTS} };
 }
 

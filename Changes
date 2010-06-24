@@ -10,11 +10,17 @@ Home page:    <http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/>
 Bug tracker:  <http://rt.cpan.org/Dist/Display.html?Queue=HTML-HTML5-Microdata-Parser>
 Maintainer:   Toby Inkster <mailto:tobyink@cpan.org>
 
+0.030 [2010-06-24]
+ - (Bugfix) Some of the constructor option defaults were implemented
+   differently from the documentation. Changed implementation to match
+   documentation.
+ - Clean up API.
+
 0.02 [2010-01-29]
- - Document &consume_microdata_item.
  - (Update) Synchronise &set_callbacks behaviour with RDF::RDFa::Parser.
  - (Addition) Make non-item-related processing optional (enabled by
    default).
+ - Document &consume_microdata_item.
 
 0.01 [2010-01-08]
 

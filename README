@@ -3,14 +3,13 @@ NAME
     'microdata'
 
 VERSION
-    0.02
+    0.030
 
 SYNOPSIS
       use HTML::HTML5::Microdata::Parser;
   
       my $parser = HTML::HTML5::Microdata::Parser->new($html, $baseURI);
-      $parser->consume;
-      my $graph  = $parser->graph
+      my $graph  = $parser->graph;
 
 DESCRIPTION
     This package aims to have a roughly compatible API to RDF::RDFa::Parser.
@@ -96,6 +95,10 @@ DESCRIPTION
             returned by this function, but the triples extracted from the
             document are passed to the callbacks as each one is found.
 
+            The "graph" method automatically calls "consume", so normally
+            you don't need to call it manually. If you're using callback
+            functions, it may be useful though.
+
     $p->consume_microdata_item($element)
             You almost certainly do not want to use this method.
 
@@ -109,9 +112,6 @@ DESCRIPTION
     $p->graph()
             This method will return an RDF::Trine::Model object with all
             statements of the full graph.
-
-            It makes sense to call "consume" before calling "graph".
-            Otherwise you'll just get an empty graph.
 
 CALLBACKS
     Several callback functions are provided. These may be set using the
