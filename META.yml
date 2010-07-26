@@ -9,6 +9,13 @@ configure_requires:
   ExtUtils::MakeMaker: 6.42
 distribution_type: module
 generated_by: 'Module::Install version 0.95'
+keywords:
+  - RDF
+  - Trine
+  - Microdata
+  - 'Semantic Web'
+  - HTML
+  - HTML5
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -19,10 +26,9 @@ no_index:
     - inc
     - t
 requires:
-  Data::Dumper: 0
   Encode: 0
-  HTML::HTML5::Parser: 0
-  HTML::HTML5::Sanity: 0
+  HTML::HTML5::Parser: 0.100
+  HTML::HTML5::Sanity: 0.100
   RDF::Trine: 0.112
   URI::Escape: 0
   URI::URL: 0
@@ -33,4 +39,4 @@ resources:
   homepage: http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/
   license: http://dev.perl.org/licenses/
   repository: http://goddamn.co.uk/viewvc/perlmods/HTML-HTML5-Microdata-Parser/
-version: 0.030
+version: 0.031

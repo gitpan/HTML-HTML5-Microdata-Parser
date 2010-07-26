@@ -10,17 +10,21 @@ Home page:    <http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/>
 Bug tracker:  <http://rt.cpan.org/Dist/Display.html?Queue=HTML-HTML5-Microdata-Parser>
 Maintainer:   Toby Inkster <mailto:tobyink@cpan.org>
 
+0.031 [2010-07-26]
+ - (Bugfix) Fix &set_callbacks bug from 0.02.
+
 0.030 [2010-06-24]
+ - Clean up API.
  - (Bugfix) Some of the constructor option defaults were implemented
    differently from the documentation. Changed implementation to match
    documentation.
- - Clean up API.
 
 0.02 [2010-01-29]
- - (Update) Synchronise &set_callbacks behaviour with RDF::RDFa::Parser.
+ - Document &consume_microdata_item.
  - (Addition) Make non-item-related processing optional (enabled by
    default).
- - Document &consume_microdata_item.
+ - (Regression) Introduced a bug where &set_callbacks became *required*.
+ - (Update) Synchronise &set_callbacks behaviour with RDF::RDFa::Parser.
 
 0.01 [2010-01-08]
 

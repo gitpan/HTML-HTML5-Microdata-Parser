@@ -2,9 +2,6 @@ NAME
     HTML::HTML5::Microdata::Parser - fairly experimental parser for HTML
     'microdata'
 
-VERSION
-    0.030
-
 SYNOPSIS
       use HTML::HTML5::Microdata::Parser;
   

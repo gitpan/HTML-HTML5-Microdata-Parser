@@ -4,10 +4,6 @@ package HTML::HTML5::Microdata::Parser;
 
 HTML::HTML5::Microdata::Parser - fairly experimental parser for HTML 'microdata'
 
-=head1 VERSION
-
-0.030
-
 =head1 SYNOPSIS
 
   use HTML::HTML5::Microdata::Parser;
@@ -21,14 +17,14 @@ use 5.008;
 use strict;
 
 use Encode qw(encode_utf8);
-use HTML::HTML5::Parser;
-use HTML::HTML5::Sanity;
-use RDF::Trine;
+use HTML::HTML5::Parser '0.100';
+use HTML::HTML5::Sanity '0.100';
+use RDF::Trine '0.112';
 use URI::Escape;
 use URI::URL;
 use XML::LibXML qw(:all);
 
-our $VERSION = '0.030';
+our $VERSION = '0.031';
 
 =head1 DESCRIPTION
 
@@ -103,7 +99,7 @@ sub new
 			'DOM'     => $DOMTree,
 			'RESULTS' => RDF::Trine::Model->new($store),
 			'bnodes'  => 0,
-			'sub'     => [],
+			'sub'     => {},
 			'consumed'=> 0,
 			'options' => {
 				'alt_stylesheet'  => 1,
@@ -485,8 +481,6 @@ sub consume
 							$token,             # predicate : token
 							$href);             # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
 					}
-					
-					# TOBY-NOTE: even URIs have been lowercased. This follows the spec but seems odd.
 				}
 			}
 		}

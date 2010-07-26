@@ -14,13 +14,11 @@ readme_from         $fn;
 author              'Toby Inkster <tobyink@cpan.org>';
 license             'perl';
 
-test_requires       'Test::More' => '0.61';
-
-requires            'Data::Dumper'        => 0;
 requires            'Encode'              => 0;
-requires            'HTML::HTML5::Parser' => 0;
-requires            'HTML::HTML5::Sanity' => 0;
+requires            'HTML::HTML5::Parser' => '0.100';
+requires            'HTML::HTML5::Sanity' => '0.100';
 requires            'RDF::Trine'          => '0.112';
+test_requires       'Test::More'          => '0.61';
 requires            'URI::Escape'         => 0;
 requires            'URI::URL'            => 0;
 requires            'XML::LibXML'         => '1.60';
@@ -30,7 +28,9 @@ resources(
 	'repository' => "http://goddamn.co.uk/viewvc/perlmods/$dist/",
 	'bugtracker' => "http://rt.cpan.org/Dist/Display.html?Queue=$dist",
 	);
-	
+
+keywords 'RDF', 'Trine', 'Microdata', 'Semantic Web', 'HTML', 'HTML5';
+
 write_doap_changes;
 write_doap_changes_xml;
 
