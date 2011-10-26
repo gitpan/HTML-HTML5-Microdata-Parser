@@ -13,18 +13,26 @@ HTML::HTML5::Microdata::Parser - fairly experimental parser for HTML 'microdata'
 
 =cut
 
-use 5.008;
+use 5.010;
 use strict;
+use utf8;
 
-use Encode qw(encode_utf8);
-use HTML::HTML5::Parser '0.100';
-use HTML::HTML5::Sanity '0.100';
-use RDF::Trine '0.112';
-use URI::Escape;
-use URI::URL;
-use XML::LibXML qw(:all);
+use constant XML_XHTML_NS => 'http://www.w3.org/1999/xhtml';
 
-our $VERSION = '0.031';
+use Encode 0 qw(encode_utf8);
+use HTML::HTML5::Microdata::Strategy::Basic;
+use HTML::HTML5::Microdata::Strategy::Heuristic;
+use HTML::HTML5::Microdata::Strategy::Microdata0;
+use HTML::HTML5::Parser 0.107;
+use HTML::HTML5::Sanity 0.102;
+use RDF::Trine 0.135;
+use Scalar::Util 0 qw(blessed);
+use URI::Escape 0;
+use URI::URL 0;
+use XML::LibXML 1.70 qw(:all);
+
+our $AUTHORITY = 'cpan:TOBYINK';
+our $VERSION   = '0.100';
 
 =head1 DESCRIPTION
 
@@ -54,14 +62,17 @@ Options [default in brackets]:
                       [1]
   * prefix_empty    - URI prefix for itemprops of untyped items.
                       [undef]
+  * strategy        - URI generation strategy for itemprops of
+                      typed items. [HTML::HTML5::Microdata::
+                      Strategy::Heuristic]
   * tdb_service     - thing-described-by.org when possible. [0] 
   * xhtml_base      - Process <base href> element. [1]
   * xhtml_lang      - Process @lang. [1]
-  * xhtml_meta      - Process <meta>. [1]
-  * xhtml_cite      - Process @cite. [1]
-  * xhtml_rel       - Process @rel. [1]
+  * xhtml_meta      - Process <meta>. [0]
+  * xhtml_cite      - Process @cite. [0]
+  * xhtml_rel       - Process @rel. [0]
   * xhtml_time      - Process <time> element more nicely. [0]
-  * xhtml_title     - Process <title> element. [1]
+  * xhtml_title     - Process <title> element. [0]
   * xml_lang        - Process @xml:lang. [1]
 
 $storage is an RDF::Trine::Storage object. If undef, then a new
@@ -78,7 +89,7 @@ sub new
 	my $store   = shift;
 	my $DOMTree;
 
-	if (UNIVERSAL::isa($xhtml, 'XML::LibXML::Document'))
+	if (blessed($xhtml) and $xhtml->isa('XML::LibXML::Document'))
 	{
 		$DOMTree = $xhtml;
 		$xhtml = $DOMTree->toString;
@@ -86,13 +97,14 @@ sub new
 	else
 	{
 		my $parser  = HTML::HTML5::Parser->new;
+		local $HTML::HTML5::Sanity::FIX_LANG_ATTRIBUTES = 2;
 		$DOMTree = fix_document($parser->parse_string($xhtml));
 	}
 	
 	$store = RDF::Trine::Store::DBI->temporary_store
 		unless defined $store;
 
-	my $this = {
+	my $self = {
 			'xhtml'   => $xhtml,
 			'baseuri' => $baseuri,
 			'origbase' => $baseuri,
@@ -106,31 +118,32 @@ sub new
 				'auto_config'     => 0,
 				'mhe_lang'        => 1,
 				'prefix_empty'    => undef,
+				'strategy'        => 'HTML::HTML5::Microdata::Strategy::Heuristic',
 				'tdb_service'     => 0,
 				'xhtml_base'      => 1,
-				'xhtml_cite'      => 1,
+				'xhtml_cite'      => 0,
 				'xhtml_lang'      => 1,
-				'xhtml_meta'      => 1,
-				'xhtml_rel'       => 1,
+				'xhtml_meta'      => 0,
+				'xhtml_rel'       => 0,
 				'xhtml_time'      => 0,
-				'xhtml_title'     => 1,
+				'xhtml_title'     => 0,
 				'xml_lang'        => 1,
 				},
 			'default_language' => undef,
 		};
-	bless $this, $class;
+	bless $self, $class;
 	
 	foreach my $o (keys %$options)
 	{
-		$this->{'options'}->{$o} = $options->{$o};
+		$self->{options}{$o} = $options->{$o};
 	}
 	
-	$this->auto_config;
+	$self->_auto_config;
 	
 	# HTML <base> element.
-	if ($this->{'options'}->{'xhtml_base'})
+	if ($self->{options}{xhtml_base})
 	{
-		my @bases = $this->{DOM}->getElementsByTagName('base');
+		my @bases = $self->{DOM}->getElementsByTagName('base');
 		my $base;
 		foreach my $b (@bases)
 		{
@@ -140,30 +153,30 @@ sub new
 				$base =~ s/#.*$//g;
 			}
 		}
-		$this->{'baseuri'} = $this->uri($base)
-			if defined $base && length $base;
+		$self->{baseuri} = $self->uri($base)
+			if (defined $base and length $base);
 	}
 	
-	if ($this->{'options'}->{'mhe_lang'})
+	if ($self->{options}{mhe_lang})
 	{
 		my $xpc = XML::LibXML::XPathContext->new;
-		$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
-		my $nodes = $xpc->find('//x:meta[translate(@http-equiv,"CONTENT-LANGUAGE","content-language"="content-language")]/@content', $this->{'DOM'}->documentElement);
+		$xpc->registerNs(x => XML_XHTML_NS);
+		my $nodes = $xpc->find('//x:meta[translate(@http-equiv,"CONTENT-LANGUAGE","content-language"="content-language")]/@content', $self->{'DOM'}->documentElement);
 		foreach my $node ($nodes->get_nodelist)
 		{
 			if ($node->getValue =~ /^\s*([^\s,]+)/)
 			{
 				my $lang = $1;
-				if (valid_lang($lang))
+				if (_valid_lang($lang))
 				{
-					$this->{'default_language'} = $lang;
+					$self->{default_language} = $lang;
 					last;
 				}
 			}
 		}
 	}
 		
-	return $this;
+	return $self;
 }
 
 =item $p->xhtml
@@ -174,8 +187,8 @@ Returns the HTML source of the document being parsed.
 
 sub xhtml
 {
-	my $this = shift;
-	return $this->{xhtml};
+	my $self = shift;
+	return $self->{xhtml};
 }
 
 =item $p->uri
@@ -196,9 +209,9 @@ sense.
 
 sub uri
 {
-	my $this  = shift;
-	my $param = shift || '';
-	my $opts  = shift || {};
+	my $self  = shift;
+	my $param = shift // '';
+	my $opts  = shift // {};
 	
 	if ((ref $opts) =~ /^XML::LibXML/)
 	{
@@ -216,16 +229,15 @@ sub uri
 		return undef;
 	}
 	
-	my $base = $this->{baseuri};
-	if ($this->{'options'}->{'xml_base'})
+	my $base = $self->{baseuri};
+	if ($self->{options}{xml_base})
 	{
-		$base = $opts->{'xml_base'} || $this->{baseuri};
+		$base = $opts->{xml_base} || $self->{baseuri};
 	}
 	
 	my $url = url $param, $base;
 	my $rv  = $url->abs->as_string;
 
-	# This is needed to pass test case 0114.
 	while ($rv =~ m!^(http://.*)(\.\./|\.)+(\.\.|\.)?$!i)
 	{
 		$rv = $1;
@@ -242,8 +254,8 @@ Returns the parsed XML::LibXML::Document.
 
 sub dom
 {
-	my $this = shift;
-	return $this->{DOM};
+	my $self = shift;
+	return $self->{DOM};
 }
 
 =item $p->set_callbacks(\%callbacks)
@@ -268,15 +280,15 @@ object itself.
 
 sub set_callbacks
 {
-	my $this = shift;
+	my $self = shift;
 
 	if ('HASH' eq ref $_[0])
 	{
-		$this->{'sub'} = $_[0];
-		$this->{'sub'}->{'pretriple_resource'} = \&_print0
-			if lc $this->{'sub'}->{'pretriple_resource'} eq 'print';
-		$this->{'sub'}->{'pretriple_literal'} = \&_print1
-			if lc $this->{'sub'}->{'pretriple_literal'} eq 'print';
+		$self->{sub} = $_[0];
+		$self->{sub}{pretriple_resource} = \&_print0
+			if lc $self->{sub}{pretriple_resource} eq 'print';
+		$self->{sub}{pretriple_literal} = \&_print1
+			if lc $self->{sub}{pretriple_literal} eq 'print';
 	}
 	elsif (defined $_[0])
 	{
@@ -284,16 +296,16 @@ sub set_callbacks
 	}
 	else
 	{
-		$this->{'sub'} = undef;
+		$self->{sub} = undef;
 	}
 	
-	return $this;
+	return $self;
 }
 
 sub _print0
 # Prints a Turtle triple.
 {
-	my $this    = shift;
+	my $self    = shift;
 	my $element = shift;
 	my $subject = shift;
 	my $pred    = shift;
@@ -324,7 +336,7 @@ sub _print0
 sub _print1
 # Prints a Turtle triple.
 {
-	my $this    = shift;
+	my $self    = shift;
 	my $element = shift;
 	my $subject = shift;
 	my $pred    = shift;
@@ -359,7 +371,7 @@ sub _print1
 		"<$pred>",
 		"\"$object\"",
 		(length $dt ? "^^<$dt>" : ''),
-		((length $lang && !length $dt) ? "\@$lang" : '')
+		((length $lang and !length $dt) ? "\@$lang" : '')
 		);
 	use warnings;
 	
@@ -379,42 +391,42 @@ to call it manually. If you're using callback functions, it may be useful though
 
 sub consume
 {
-	my $this = shift;
+	my $self = shift;
 	
-	return $this if $this->{'consumed'};
+	return $self if $self->{consumed};
 	
 	my $xpc = XML::LibXML::XPathContext->new;
-	$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
+	$xpc->registerNs(x => XML_XHTML_NS);
 	
-	if ($this->{'options'}->{'xhtml_title'})
+	if ($self->{options}{xhtml_title})
 	{
 		my $titles = $xpc->find(
-			'//x:title', $this->{'DOM'}->documentElement);
+			'//x:title', $self->{'DOM'}->documentElement);
 			
 		# If the title element is not null, then generate the following triple:
 		foreach my $title ($titles->get_nodelist)
 		{
-			$this->rdf_triple_literal(
+			$self->_rdf_triple_literal(
 				$title,
-				$this->{'baseuri'},               # subject : the document's current address 
+				$self->{baseuri},                 # subject : the document's current address 
 				'http://purl.org/dc/terms/title', # predicate : http://purl.org/dc/terms/title 
-				$this->stringify($title),         # object : the concatenation of the data of all the child text nodes of the title element, in tree order, 
+				$self->_stringify($title),        # object : the concatenation of the data of all the child text nodes of the title element, in tree order, 
 				undef,                            # ... as a plain literal
-				$this->get_node_lang($title));    # ... with the language information set from the language of the title element, if it is not unknown. 
+				$self->_get_node_lang($title));   # ... with the language information set from the language of the title element, if it is not unknown. 
 		}
 	}
 	
-	if ($this->{'options'}->{'xhtml_rel'})
+	if ($self->{options}{xhtml_rel})
 	{
 		# For each a, area, and link element in the Document, run these substeps:
 		my @links = $xpc
-			->find('//x:a[@rel][@href]', $this->{'DOM'}->documentElement)
+			->find('//x:a[@rel][@href]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 		push @links, $xpc
-			->find('//x:area[@rel][@href]', $this->{'DOM'}->documentElement)
+			->find('//x:area[@rel][@href]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 		push @links, $xpc
-			->find('//x:link[@rel][@href]', $this->{'DOM'}->documentElement)
+			->find('//x:link[@rel][@href]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 		# If the element does not have a rel attribute, then skip this element.
 		# If the element does not have an href attribute, then skip this element.
@@ -422,7 +434,7 @@ sub consume
 		foreach my $link (@links)
 		{
 			# If resolving the element's href attribute relative to the element is not successful, then skip this element.
-			my $href = $this->uri( $link->getAttribute('href') );
+			my $href = $self->uri( $link->getAttribute('href') );
 			next unless defined $href;
 			
 			# Otherwise, split the value of the element's rel attribute on spaces, obtaining list of tokens.
@@ -450,7 +462,7 @@ sub consume
 			@rels = keys %{{map { $_, 1 } @rels}};
 			
 			# If list of tokens contains both the tokens alternate and stylesheet, then remove them both and replace them with the single (uppercase) token ALTERNATE-STYLESHEET.
-			if (($this->{'options'}->{'alt_stylesheet'})
+			if (($self->{options}{alt_stylesheet})
 			and (grep /^alternate$/, @rels)
 			and (grep /^stylesheet$/, @rels))
 			{
@@ -463,21 +475,21 @@ sub consume
 				# For each token token in list of tokens that contains no U+003A COLON characters (:), generate the following triple:
 				if ($token !~ /:/)
 				{
-					$this->rdf_triple(
+					$self->_rdf_triple(
 						$link,
-						$this->{'baseuri'},  # subject : the document's current address 
+						$self->{baseuri},    # subject : the document's current address 
 						'http://www.w3.org/1999/xhtml/vocab#'.uri_escape($token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
 						$href);              # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
 				}
 				else
 				{
 					# For each token token in list of tokens that is an absolute URL, generate the following triple:
-					my $predicate = $this->uri($token, {'require-absolute'=>1});
+					my $predicate = $self->uri($token, {'require-absolute'=>1});
 					if (defined $predicate)
 					{
-						$this->rdf_triple(
+						$self->_rdf_triple(
 							$link,
-							$this->{'baseuri'}, # subject : the document's current address 
+							$self->{baseuri},   # subject : the document's current address 
 							$token,             # predicate : token
 							$href);             # object : the absolute URL that results from resolving the value of the element's href attribute relative to the element 
 					}
@@ -486,11 +498,11 @@ sub consume
 		}
 	}
 	
-	if ($this->{'options'}->{'xhtml_meta'})
+	if ($self->{options}{xhtml_meta})
 	{
 		# For each meta element in the Document that has a name attribute and a content attribute,
 		my @metas = $xpc
-			->find('//x:meta[@name][@content]', $this->{'DOM'}->documentElement)
+			->find('//x:meta[@name][@content]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 
 		foreach my $meta (@metas)
@@ -500,53 +512,53 @@ sub consume
 			# if the value of the name attribute contains no U+003A COLON characters (:), generate the following triple:
 			if ($token !~ /:/)
 			{
-				$this->rdf_triple_literal(
+				$self->_rdf_triple_literal(
 					$meta,
-					$this->{'baseuri'},              # subject : the document's current address 
+					$self->{baseuri},                # subject : the document's current address 
 					'http://www.w3.org/1999/xhtml/vocab#'.uri_escape(lc $token), # predicate : the concatenation of the string "http://www.w3.org/1999/xhtml/vocab#" and token, with any characters in token that are not valid in the <ifragment> production of the IRI syntax being %-escaped [RFC3987] 
 					$meta->getAttribute('content'),  # object : the value of the element's content attribute, 
 					undef,                           # as a plain literal, 
-					$this->get_node_lang($meta));    # with the language information set from the language of the element, if it is not unknown
+					$self->_get_node_lang($meta));   # with the language information set from the language of the element, if it is not unknown
 			}
 			else
 			{
 				# For each token token in list of tokens that is an absolute URL, generate the following triple:
-				my $predicate = $this->uri($token, {'require-absolute'=>1});
+				my $predicate = $self->uri($token, {'require-absolute'=>1});
 				if (defined $predicate)
 				{
-					$this->rdf_triple_literal(
+					$self->_rdf_triple_literal(
 						$meta,
-						$this->{'baseuri'},             # subject : the document's current address 
+						$self->{baseuri},               # subject : the document's current address 
 						$token,                         # predicate : token
 						$meta->getAttribute('content'), # object : the value of the element's content attribute, 
 						undef,                          # as a plain literal, 
-						$this->get_node_lang($meta));   # with the language information set from the language of the element, if it is not unknown
+						$self->_get_node_lang($meta));  # with the language information set from the language of the element, if it is not unknown
 				}
 			}		
 		}
 	}
 	
-	if ($this->{'options'}->{'xhtml_cite'})
+	if ($self->{options}{xhtml_cite})
 	{
 		# For each blockquote and q element in the Document that has a cite attribute 
 		my @quotes = $xpc
-			->find('//x:blockquote[@cite]', $this->{'DOM'}->documentElement)
+			->find('//x:blockquote[@cite]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 		push @quotes, $xpc
-			->find('//x:q[@cite]', $this->{'DOM'}->documentElement)
+			->find('//x:q[@cite]', $self->{'DOM'}->documentElement)
 			->get_nodelist;
 			
 		foreach my $quote (@quotes)
 		{
 			# that resolves successfully relative to the element, 
-			my $cite = $this->uri($quote->getAttribute('cite'));
+			my $cite = $self->uri($quote->getAttribute('cite'));
 			
 			if (defined $cite)
 			{
 				# generate the following triple:
-				$this->rdf_triple(
+				$self->_rdf_triple(
 					$quote,
-					$this->{'baseuri'},                # subject : the document's current address 
+					$self->{baseuri},                  # subject : the document's current address 
 					'http://purl.org/dc/terms/source', # predicate : http://purl.org/dc/terms/source 
 					$cite);                            # object : the absolute URL that results from resolving the value of the element's cite attribute relative to the element 
 			}
@@ -555,7 +567,7 @@ sub consume
 	
 	# For each element that is also a top-level microdata item, run the following steps:
 	my @items = $xpc
-		->find('//*[@itemscope]', $this->{'DOM'}->documentElement)
+		->find('//*[@itemscope]', $self->{'DOM'}->documentElement)
 		->get_nodelist;
 	
 	foreach my $item (@items)
@@ -563,19 +575,19 @@ sub consume
 		next if $item->hasAttribute('itemprop'); #[skip non-top-level]
 		
 		# Generate the triples for the item. Let [item address] be the subject returned.
-		my $item_address = $this->consume_microdata_item($item);
+		my $item_address = $self->consume_microdata_item($item);
 		
 		# Generate the following triple:
-		$this->rdf_triple(
+		$self->_rdf_triple(
 			$item,
-			$this->{'baseuri'},                             # subject : the document's current address 
+			$self->{baseuri},                               # subject : the document's current address 
 			'http://www.w3.org/1999/xhtml/microdata#item',  # predicate : http://www.w3.org/1999/xhtml/microdata#item  
 			$item_address);                                 # object : [item address]
 	}
 	
-	$this->{'consumed'}++;
+	$self->{consumed}++;
 	
-	return $this;
+	return $self;
 }
 
 =item $p->consume_microdata_item($element)
@@ -594,19 +606,19 @@ L<HTML::HTML5::Microdata::ToRDFa>.
 sub consume_microdata_item
 {
 	# When the user agent is to generate the triples for an item item, it must follow the following steps:
-	my $this = shift;
+	my $self = shift;
 	my $item = shift;
 	
 	# If item has a global identifier and that global identifier is an absolute URL, let [item address] be that global identifier. 
 	my $item_address;
 	if ($item->hasAttribute('itemid'))
 	{
-		$item_address = $this->uri($item->getAttribute('itemid'));
+		$item_address = $self->uri($item->getAttribute('itemid'));
 	}
 	# Otherwise, let subject be a new blank node.
 	else
 	{
-		$item_address = $this->bnode($item);
+		$item_address = $self->_bnode($item);
 	}
 	
 	# If item has an item type and that item type is an absolute URL, let [item type] be that item type.
@@ -614,13 +626,13 @@ sub consume_microdata_item
 	my $item_type = '';
 	if ($item->hasAttribute('itemtype'))
 	{
-		$item_type = $this->uri($item->getAttribute('itemtype'), {'require-absolute'=>1}) || '';
+		$item_type = $self->uri($item->getAttribute('itemtype'), {'require-absolute'=>1}) // '';
 	}
 
 	# If [item type] is not the empty string, generate the following triple:
 	if (length $item_type)
 	{
-		$this->rdf_triple(
+		$self->_rdf_triple(
 			$item,
 			$item_address,                                      # subject : [item address]
 			'http://www.w3.org/1999/02/22-rdf-syntax-ns#type',  # predicate : http://www.w3.org/1999/02/22-rdf-syntax-ns#type  
@@ -631,7 +643,7 @@ sub consume_microdata_item
 	# To find the properties of an item, the user agent must run the following steps:
 	{
 		my $xpc = XML::LibXML::XPathContext->new;
-		$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
+		$xpc->registerNs(x => XML_XHTML_NS);
 	
 		# Let root be the element with the itemscope attribute.
 		my $root = $item;
@@ -684,7 +696,7 @@ sub consume_microdata_item
 			if ($candidate->parentNode)
 			{
 				$scope = $candidate->parentNode;
-				while (defined $scope && $scope->nodeType == XML_ELEMENT_NODE)
+				while (defined $scope and $scope->nodeType == XML_ELEMENT_NODE)
 				{
 					push @ancestorsForLater, $scope;
 					last if $scope->hasAttribute('itemscope');
@@ -794,10 +806,10 @@ sub consume_microdata_item
 		# itemprop attribute depends on the element, as follows:
 		
 		# If the element also has an itemscope attribute
-		if ($element->hasAttribute('itemscope') && $element != $item)
+		if ($element->hasAttribute('itemscope') and $element != $item)
 		{
 			# The value is the item created by the element.
-			$value = $this->consume_microdata_item($element);
+			$value = $self->consume_microdata_item($element);
 			$value_type = ((substr $value,0,2) eq '_:') ? 'bnode' : 'uri';
 		}
 		# If the element is a meta element
@@ -805,9 +817,9 @@ sub consume_microdata_item
 		{
 			# The value is the value of the element's content attribute, if any, or
 			# the empty string if there is no such attribute.
-			$value = $element->getAttribute('content') || '';
+			$value = $element->getAttribute('content') // '';
 			$value_type = 'literal';
-			$value_lang = $this->get_node_lang($element);
+			$value_lang = $self->_get_node_lang($element);
 		}
 		
 		# If the element is an audio, embed, iframe, img, source, or video element
@@ -817,7 +829,7 @@ sub consume_microdata_item
 			# element's src attribute relative to the element at the time the attribute is set
 			if ($element->hasAttribute('src'))
 			{
-				$value = $this->uri($element->getAttribute('src'));
+				$value = $self->uri($element->getAttribute('src'));
 				$value_type = 'uri';
 			}
 			# or the empty string if there is no such attribute or if resolving it results in an error.
@@ -835,7 +847,7 @@ sub consume_microdata_item
 			# element's href attribute relative to the element at the time the attribute is set
 			if ($element->hasAttribute('href'))
 			{
-				$value = $this->uri($element->getAttribute('href'));
+				$value = $self->uri($element->getAttribute('href'));
 				$value_type = 'uri';
 			}
 			# or the empty string if there is no such attribute or if resolving it results in an error.
@@ -853,7 +865,7 @@ sub consume_microdata_item
 			# data attribute relative to the element at the time the attribute is set,
 			if ($element->hasAttribute('data'))
 			{
-				$value = $this->uri($element->getAttribute('data'));
+				$value = $self->uri($element->getAttribute('data'));
 				$value_type = 'uri';
 			}
 			# or the empty string if there is no such attribute or if resolving it results in an error.
@@ -868,41 +880,43 @@ sub consume_microdata_item
 		elsif ($element->localname eq 'time')
 		{
 			# The value is the value of the element's datetime attribute.
-			$value = $element->getAttribute('datetime') || '';
+			$value = $element->hasAttribute('datetime')
+				? $element->getAttribute('datetime')
+				: $self->_stringify($element);
 			$value_type = 'literal';
-			$value_lang = $this->get_node_lang($element);
+			$value_lang = $self->_get_node_lang($element);
 			
-			if ($this->{'options'}->{'xhtml_time'})
+			if ($self->{options}{xhtml_time})
 			{
-				if ($value =~ /^(\-?\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				if ($value =~ /^(\-?\d{4,})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(:(\d{2})(?:\.\d+)?)?(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#dateTime'
 				}
-				elsif ($value =~ /^(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^(\d{2}):(\d{2})(:(\d{2})(?:\.\d+)?)?(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#time'
 				}
-				elsif ($value =~ /^(\-?\d{4,})-(\d{2})-(\d{2})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^(\-?\d{4,})-(\d{2})-(\d{2})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#date'
 				}
-				elsif ($value =~ /^(\-?\d{4,})-(\d{2})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^(\-?\d{4,})-(\d{2})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#gYearMonth'
 				}
-				elsif ($value =~ /^(\-?\d{4,})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^(\-?\d{4,})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#gYear'
 				}
-				elsif ($value =~ /^--(\d{2})-(\d{2})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^--(\d{2})-(\d{2})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#gMonthDay'
 				}
-				elsif ($value =~ /^---(\d{2})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^---(\d{2})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#gDay'
 				}
-				elsif ($value =~ /^--(\d{2})(Z|(?:[\+\-]\d{2}:\d{2}))?$/i)
+				elsif ($value =~ /^--(\d{2})(Z|(?:[\+\-]\d{2}:?\d{2}))?$/i)
 				{
 					$value_datatype  = 'http://www.w3.org/2001/XMLSchema#gMonth'
 				}
@@ -918,9 +932,9 @@ sub consume_microdata_item
 		else
 		{
 			# The value is the element's textContent.
-			$value = $this->stringify($element);
+			$value = $self->_stringify($element);
 			$value_type = 'literal';
-			$value_lang = $this->get_node_lang($element); 
+			$value_lang = $self->_get_node_lang($element); 
 		}
 		
 		# The property names of an element are the tokens that the element's
@@ -937,49 +951,28 @@ sub consume_microdata_item
 		# substeps from the following list:
 		foreach my $name (@property_names)
 		{
-			my $predicate = undef;
-			
-			# If name is an absolute URL
-			if ($name =~ /:/)
-			{
-				my $absurl = $this->uri($name, {'require-absolute'=>1});
-				if (defined $absurl)
+			my $function = do
 				{
-					# Generate the following triple:
-					# predicate : name 
-					$predicate = $absurl;
-				}
-			}
-			# If name contains no U+003A COLON character (:)
-			# If [item type] is the empty string, then abort these substeps.
-			elsif (length $item_type)
-			{
-				# Let predicate have the same value as [item type].
-				$predicate = $item_type;
-				# If predicate does not contain a U+0023 NUMBER SIGN character (#),
-				# then append a U+0023 NUMBER SIGN character (#) to predicate.
-				$predicate .= '#' unless $predicate =~ /#/;
-				# Append a U+003A COLON character (:) to predicate.
-				$predicate .= ':';
-				# Append the value of name to predicate, with any characters in name
-				# that are not valid in the <ifragment> production of the IRI syntax
-				# being %-escaped.
-				# Generate the following triple:
-				# predicate : the concatenation of the string
-				# "http://www.w3.org/1999/xhtml/microdata#" and predicate, with any
-				# characters in predicate that are not valid in the <ifragment>
-				# production of the IRI syntax being %-escaped [RFC3987] 
-				# TOBY-QUERY: should $name really get escaped twice??
-				$predicate = 'http://www.w3.org/1999/xhtml/microdata#'
-					. uri_escape($predicate . uri_escape($name));
-			}
+					my $strategy = $self->{options}{strategy}
+						// 'HTML::HTML5::Microdata::Strategy::Heuristic';
+					
+					if (ref $strategy eq 'CODE')
+						{ $strategy }
+					elsif (blessed($strategy) and $strategy->can('generate_uri'))
+						{ sub { return $strategy->generate_uri(@_) } }
+					elsif (length "$strategy")
+						{ my $class = $strategy; sub { return $class->new->generate_uri(@_) } }
+					else
+						{ sub { return undef } }
+				};
 			
-			# TOBY: OPTIONAL EXTENSION
-			elsif (length $this->{'options'}->{'prefix_empty'})
-			{
-				$predicate = $this->uri(
-					$this->{'options'}->{'prefix_empty'}.uri_escape($name));
-			}
+			my $predicate = $function->(
+				name    => $name,
+				type    => $item_type,
+				element => $element,
+				item    => $item,
+				prefix_empty => $self->{options}{prefix_empty},
+				);
 			
 			if (defined $predicate)
 			{
@@ -988,7 +981,7 @@ sub consume_microdata_item
 				# object : value 
 				if ($value_type eq 'literal')
 				{
-					$this->rdf_triple_literal(
+					$self->_rdf_triple_literal(
 						$element,
 						$item_address,
 						$predicate,
@@ -998,7 +991,7 @@ sub consume_microdata_item
 				}
 				else
 				{
-					$this->rdf_triple(
+					$self->_rdf_triple(
 						$element,
 						$item_address,
 						$predicate,
@@ -1012,55 +1005,53 @@ sub consume_microdata_item
 	return $item_address;
 }
 
-sub get_node_lang
+sub _get_node_lang
 {
-	my $this = shift;
+	my $self = shift;
 	my $node = shift;
 
-	my $XML_XHTML_NS = 'http://www.w3.org/1999/xhtml';
-
-	if ($this->{'options'}->{'xml_lang'}
-	&&  $node->hasAttributeNS(XML_XML_NS, 'lang'))
+	if ($self->{options}{xml_lang}
+	and $node->hasAttributeNS(XML_XML_NS, 'lang'))
 	{
-		return valid_lang($node->getAttributeNS(XML_XML_NS, 'lang')) ?
+		return _valid_lang($node->getAttributeNS(XML_XML_NS, 'lang')) ?
 			$node->getAttributeNS(XML_XML_NS, 'lang'):
 			undef;
 	}
 
-	if ($this->{'options'}->{'xhtml_lang'}
-	&&  $node->hasAttributeNS($XML_XHTML_NS, 'lang'))
+	if ($self->{options}{xhtml_lang}
+	and $node->hasAttributeNS(XML_XHTML_NS, 'lang'))
 	{
-		return valid_lang($node->getAttributeNS($XML_XHTML_NS, 'lang')) ?
-			$node->getAttributeNS($XML_XHTML_NS, 'lang'):
+		return _valid_lang($node->getAttributeNS(XML_XHTML_NS, 'lang')) ?
+			$node->getAttributeNS(XML_XHTML_NS, 'lang'):
 			undef;
 	}
 
-	if ($this->{'options'}->{'xhtml_lang'}
-	&&  $node->hasAttributeNS(undef, 'lang'))
+	if ($self->{options}{xhtml_lang}
+	and $node->hasAttributeNS(undef, 'lang'))
 	{
-		return valid_lang($node->getAttributeNS(undef, 'lang')) ?
+		return _valid_lang($node->getAttributeNS(undef, 'lang')) ?
 			$node->getAttributeNS(undef, 'lang'):
 			undef;
 	}
 
-	if ($node != $this->{'DOM'}->documentElement
-	&&  defined $node->parentNode
-	&&  $node->parentNode->nodeType == XML_ELEMENT_NODE)
+	if ($node != $self->{DOM}->documentElement
+	and defined $node->parentNode
+	and $node->parentNode->nodeType == XML_ELEMENT_NODE)
 	{
-		return $this->get_node_lang($node->parentNode);
+		return $self->_get_node_lang($node->parentNode);
 	}
 	
-	return $this->{'default_language'};
+	return $self->{default_language};
 }
 
-sub rdf_triple
+sub _rdf_triple
 # Function only used internally.
 {
-	my $this = shift;
+	my $self = shift;
 
 	my $suppress_triple = 0;
-	$suppress_triple = $this->{'sub'}->{'pretriple_resource'}($this, @_)
-		if defined $this->{'sub'}->{'pretriple_resource'};
+	$suppress_triple = $self->{sub}{pretriple_resource}($self, @_)
+		if defined $self->{sub}{pretriple_resource};
 	return if $suppress_triple;
 	
 	my $element   = shift;  # A reference to the XML::LibXML element being parsed
@@ -1080,17 +1071,17 @@ sub rdf_triple
 	}
 
 	# Run the common function
-	return $this->rdf_triple_common($element, $subject, $predicate, $to);
+	return $self->_rdf_triple_common($element, $subject, $predicate, $to);
 }
 
-sub rdf_triple_literal
+sub _rdf_triple_literal
 # Function only used internally.
 {
-	my $this = shift;
+	my $self = shift;
 
 	my $suppress_triple = 0;
-	$suppress_triple = $this->{'sub'}->{'pretriple_literal'}($this, @_)
-		if defined $this->{'sub'}->{'pretriple_literal'};
+	$suppress_triple = $self->{sub}{pretriple_literal}($self, @_)
+		if defined $self->{sub}{pretriple_literal};
 	return if $suppress_triple;
 
 	my $element   = shift;  # A reference to the XML::LibXML element being parsed
@@ -1110,7 +1101,7 @@ sub rdf_triple_literal
 	{
 		if ($datatype eq 'http://www.w3.org/1999/02/22-rdf-syntax-ns#XMLLiteral')
 		{
-			if ($this->{'options'}->{'use_rtnlx'})
+			if ($self->{options}{use_rtnlx})
 			{
 				eval
 				{
@@ -1138,13 +1129,13 @@ sub rdf_triple_literal
 	}
 
 	# Run the common function
-	$this->rdf_triple_common($element, $subject, $predicate, $to);
+	$self->_rdf_triple_common($element, $subject, $predicate, $to);
 }
 
-sub rdf_triple_common
+sub _rdf_triple_common
 # Function only used internally.
 {
-	my $this      = shift;  # A reference to the HTML::HTML5::Microdata::Parser object
+	my $self      = shift;  # A reference to the HTML::HTML5::Microdata::Parser object
 	my $element   = shift;  # A reference to the XML::LibXML element being parsed
 	my $subject   = shift;  # Subject URI or bnode
 	my $predicate = shift;  # Predicate URI
@@ -1165,88 +1156,58 @@ sub rdf_triple_common
 	my $statement = RDF::Trine::Statement->new($ts, $tp, $to);
 
 	my $suppress_triple = 0;
-	$suppress_triple = $this->{'sub'}->{'ontriple'}($this, $element, $statement)
-		if ($this->{'sub'}->{'ontriple'});
+	$suppress_triple = $self->{sub}{ontriple}($self, $element, $statement)
+		if ($self->{sub}{ontriple});
 	return if $suppress_triple;
 
-	$this->{RESULTS}->add_statement($statement);
+	$self->{RESULTS}->add_statement($statement);
 }
 
-sub stringify
+sub _stringify
 # Function only used internally.
 {
-	my $this = shift;
+	my $self = shift;
 	my $dom  = shift;
 	
 	if ($dom->nodeType == XML_TEXT_NODE)
 	{
 		return $dom->getData;
 	}
-	elsif ($dom->nodeType == XML_ELEMENT_NODE && lc($dom->tagName) eq 'img')
+	elsif ($dom->nodeType == XML_ELEMENT_NODE and lc($dom->tagName) eq 'img')
 	{
 		return $dom->getAttribute('alt');
 	}
 	elsif ($dom->nodeType == XML_ELEMENT_NODE)
 	{
-		my $rv = '';
-		foreach my $kid ($dom->childNodes)
-			{ $rv .= $this->stringify($kid); }
-		return $rv;
+		return join '',
+			map { $self->_stringify($_) }
+			$dom->childNodes;
 	}
 
 	return '';
 }
 
-sub xmlify
+sub _bnode
 # Function only used internally.
 {
-	my $this = shift;
-	my $dom  = shift;
-	my $lang = shift;
-	my $rv;
-	
-	foreach my $kid ($dom->childNodes)
-	{
-		my $fakelang = 0;
-		if (($kid->nodeType == XML_ELEMENT_NODE) && defined $lang)
-		{
-			unless ($kid->hasAttributeNS(XML_XML_NS, 'lang'))
-			{
-				$kid->setAttributeNS(XML_XML_NS, 'lang', $lang);
-				$fakelang++;
-			}
-		}
-		
-		$rv .= $kid->toStringEC14N(1);
-		
-		if ($fakelang)
-		{
-			$kid->removeAttributeNS(XML_XML_NS, 'lang');
-		}
-	}
-	
-	return $rv;
-}
-
-sub bnode
-# Function only used internally.
-{
-	my $this    = shift;
+	my $self    = shift;
 	my $element = shift;
 	
 	return sprintf('http://thing-described-by.org/?%s#%s',
-		$this->uri,
-		$this->{element}->getAttribute('id'))
-		if ($this->{options}->{tdb_service} && $element && length $element->getAttribute('id'));
+		$self->uri,
+		$self->{element}->getAttribute('id'))
+		if ($self->{options}{tdb_service}
+		and $element
+		and length $element->getAttribute('id'));
 
-	return sprintf('_:RDFaAutoNode%03d', $this->{bnodes}++);
+	return sprintf('_:RDFaAutoNode%03d', $self->{bnodes}++);
 }
 
-sub valid_lang
+sub _valid_lang
 {
 	my $value_to_test = shift;
 
-	return 1 if (defined $value_to_test) && ($value_to_test eq '');
+	return 1 if (defined $value_to_test and $value_to_test eq '');
 	return 0 unless defined $value_to_test;
 	
 	# Regex for recognizing RFC 4646 well-formed tags
@@ -1351,49 +1312,55 @@ statements of the full graph.
 
 sub graph
 {
-	my $this = shift;
-	$this->consume;
-	return $this->{RESULTS};
+	my $self = shift;
+	$self->consume;
+	return $self->{RESULTS};
 }
+
+=item $p->graphs() 
+
+Provided for RDF::RDFa::Parser compatibility.
+
+=cut
 
 sub graphs
 {
-	my $this = shift;
-	$this->consume;
-	return { $this->{'baseuri'} => $this->{RESULTS} };
+	my $self = shift;
+	$self->consume;
+	return { $self->{baseuri} => $self->{RESULTS} };
 }
 
-sub auto_config
+sub _auto_config
 # Internal use only.
 {
-	my $this  = shift;
+	my $self  = shift;
 	my $count = 0;
 	
-	return undef unless ($this->{'options'}->{'auto_config'});
+	return undef unless $self->{options}{auto_config};
 
 	my $xpc = XML::LibXML::XPathContext->new;
 	$xpc->registerNs('x', 'http://www.w3.org/1999/xhtml');
-	my $nodes   = $xpc->find('//x:meta[@name="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#auto_config"]/@content', $this->{'DOM'}->documentElement);
+	my $nodes   = $xpc->find('//x:meta[@name="http://search.cpan.org/dist/HTML-HTML5-Microdata-Parser/#auto_config"]/@content', $self->{'DOM'}->documentElement);
 	my $optstr = '';
 	foreach my $node ($nodes->get_nodelist)
 	{
 		$optstr .= '&' . $node->getValue;
 	}
 	$optstr =~ s/^\&//;
-	my $options = parse_axwfue($optstr);
+	my $options = _parse_axwfue($optstr);
 	
 	foreach my $o (keys %$options)
 	{
 		next unless $o=~ /^(alt_stylesheet | mhe_lang | prefix_empty | 
 			xhtml_base | xhtml_lang | xhtml_time | xml_lang)$/ix;	
 		$count++;
-		$this->{'options'}->{lc $o} = $options->{$o};
+		$self->{options}{lc $o} = $options->{$o};
 	}
 	
 	return $count;
 }
 
-sub parse_axwfue
+sub _parse_axwfue
 # Internal use only
 {
 	my $axwfue = shift;
@@ -1494,6 +1461,31 @@ The callback should return 1 to tell the parser to skip this triple (not add it 
 the graph); return 0 otherwise. The callback may modify the RDF::Trine::Statement
 object.
 
+=head1 ITEMPROP URI GENERATION STRATEGY
+
+The C<itemprop> attribute does not need to be a full URI.
+
+ <div itemscope itemtype="http://example.com/Person">
+   <span itemprop="phoneNumber">01234 567 890</span>
+ </div>
+
+The C<strategy> option passed to the constructor tells the parser how to
+convert C<phoneNumber> in the above example into a URI. This can be a
+callback function, or an object or class that provides a C<generate_uri>
+method.
+
+Three strategies are bundled with this distribution:
+
+=over
+
+=item * B<HTML::HTML5::Microdata::Strategy::Basic> - don't attempt to convert to a URI
+
+=item * B<HTML::HTML5::Microdata::Strategy::Heuristic> - smart strategy, the default
+
+=item * B<HTML::HTML5::Microdata::Strategy::Microdata0> - official strategy of early Microdata drafts
+
+=back
+
 =head1 AUTO CONFIG
 
 HTML::HTML5::Microdata::Parser has a lot of different options that can
@@ -1527,13 +1519,17 @@ L<http://www.perlrdf.org/>.
 
 Toby Inkster E<lt>tobyink@cpan.orgE<gt>.
 
-=head1 COPYRIGHT AND LICENSE
+=head1 COPYRIGHT AND LICENCE
 
-Copyright (C) 2009-2010 by Toby Inkster
+Copyright (C) 2009-2011 by Toby Inkster
 
 This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.1 or,
-at your option, any later version of Perl 5 you may have available.
+it under the same terms as Perl itself.
 
+=head1 DISCLAIMER OF WARRANTIES
+
+THIS PACKAGE IS PROVIDED "AS IS" AND WITHOUT ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
 
 =cut
